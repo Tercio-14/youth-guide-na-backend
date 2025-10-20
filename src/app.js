@@ -13,6 +13,8 @@ const chatRoutes = require('./routes/chat');
 const opportunityRoutes = require('./routes/opportunities');
 const userRoutes = require('./routes/users');
 const adminRoutes = require('./routes/admin');
+const scraperRoutes = require('./routes/scraper');
+const savedRoutes = require('./routes/saved');
 
 const app = express();
 
@@ -180,7 +182,10 @@ app.get('/api', (req, res) => {
       'POST /api/opportunities': 'Create opportunity (admin only)',
       'GET /api/users/profile': 'Get user profile',
       'POST /api/users/profile': 'Create/update user profile',
-      'POST /api/auth/verify': 'Verify Firebase auth token'
+      'POST /api/auth/verify': 'Verify Firebase auth token',
+      'POST /api/scrape': 'Trigger manual web scraping (admin only)',
+      'GET /api/scrape/status': 'Get scraper status and last run info',
+      'GET /api/scrape/data': 'Get raw scraped data'
     },
     documentation: 'https://github.com/Tercio-14/youth-guide-na-backend'
   });
@@ -192,6 +197,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/opportunities', opportunityRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/scrape', scraperRoutes);
+app.use('/api/saved', savedRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -5,6 +5,8 @@ const logger = require('../utils/logger');
  * Middleware to verify Firebase Auth token
  */
 const verifyToken = async (req, res, next) => {
+  let token;
+
   try {
     const authHeader = req.headers.authorization;
     
@@ -15,7 +17,7 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
-    const token = authHeader.split('Bearer ')[1];
+  token = authHeader.split('Bearer ')[1];
     
     if (!token) {
       return res.status(401).json({

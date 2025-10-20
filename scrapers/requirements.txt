@@ -1,0 +1,10 @@
+# YouthGuide NA - Scraper Dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP requests and HTML parsing
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Selenium for dynamic websites
+selenium>=4.11.0

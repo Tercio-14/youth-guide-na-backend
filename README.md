@@ -103,19 +103,46 @@ RAG-powered backend API for YouthGuide NA - connecting youth to opportunities in
 Copy `.env.example` to `.env` and configure:
 
 ```env
-# Server
+# Server Configuration
 NODE_ENV=development
 PORT=3001
 FRONTEND_URL=http://localhost:5173
 
-# Firebase (get from Firebase Console)
+# Firebase Configuration
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxx@your-project.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_DATABASE_URL=https://your-project-id-default-rtdb.firebaseio.com/
 
-# LLM API (choose one)
+# LLM API Configuration (choose one)
 OPENROUTER_API_KEY=sk-or-v1-xxxxx
-OPENROUTER_MODEL=mistralai/mistral-7b-instruct:free
+OPENROUTER_CHAT_MODEL=mistralai/mistral-small-latest
+OPENROUTER_SITE_URL=https://your-frontend-url.local
+OPENROUTER_APP_NAME=YouthGuide NA Backend
+CHAT_TEMPERATURE=0.2
+CHAT_MAX_TOKENS=600
+# OR
+HUGGINGFACE_API_KEY=hf_xxxxx
+HUGGINGFACE_MODEL=microsoft/DialoGPT-medium
+
+# Retrieval & Logging Settings
+MAX_OPPORTUNITIES_PER_QUERY=5
+EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
+RETRIEVAL_TOP_K=3
+RETRIEVAL_CANDIDATES=100
+LOG_LEVEL=info
+
+# Chat Context Settings
+USE_CHAT_CONTEXT=true
+CHAT_CONTEXT_TURNS=3
+
+# Rate Limiting
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW_MS=900000
+
+# Deployment
+RENDER_EXTERNAL_URL=https://youthguide-backend.onrender.com
+VERCEL_URL=https://youthguide-backend.vercel.app
 ```
 
 ## 🚢 Deployment
@@ -142,7 +169,81 @@ npm run test:watch
 
 # Run specific test file
 npm test -- auth.test.js
+
+# Test chat context memory feature
+# See tests/chat-context.test.md for comprehensive test plan
 ```
+
+## 💬 Conversational Memory Feature
+
+The chatbot now supports **short-term conversational memory** to maintain context within a single chat session.
+
+### How It Works
+
+1. **Conversation ID**: Each chat session is identified by a unique `conversationId` that persists across messages until the page is refreshed.
+
+2. **Message History**: The backend retrieves the last few message pairs from Firestore before generating each response, allowing the chatbot to:
+   - Remember user's name and preferences
+   - Maintain topic continuity
+   - Handle follow-up questions naturally
+   - Reference previous opportunities mentioned
+
+3. **Configuration**:
+   - `USE_CHAT_CONTEXT=true` - Enable/disable context feature
+   - `CHAT_CONTEXT_TURNS=3` - Number of message pairs to include (default: 3 turns = 6 messages)
+
+4. **Performance**: Context retrieval adds minimal latency (<100ms) via a single Firestore query.
+
+### Example Conversation
+
+```
+User: Hi, my name is Sarah
+Bot: Hi Sarah! I'm YouthGuide NA. How can I help you today?
+
+User: What IT jobs are available?
+Bot: Hi Sarah! I found 2 opportunities that might interest you...
+
+User: Tell me more about the first one
+Bot: The software development internship at TechCorp offers...
+```
+
+### Data Structure
+
+Messages are stored in Firestore:
+```
+chats/
+  {conversationId}/
+    userId: "user123"
+    createdAt: timestamp
+    updatedAt: timestamp
+    lastUserMessage: "..."
+    lastAssistantMessage: "..."
+    messages/
+      {messageId}: {
+        role: "user" | "assistant"
+        content: "message text"
+        timestamp: timestamp
+        profileSnapshot: {...}  // user messages only
+        opportunities: [...]     // assistant messages only
+      }
+```
+
+### Logging
+
+Context usage is logged for monitoring:
+```
+[ChatContext] Using previous chat context: true (count: 6)
+[Chat] conversationId=conv_123, historyUsed=true, historyMessageCount=6
+```
+
+### Testing
+
+See `tests/chat-context.test.md` for a comprehensive test plan covering:
+- Basic context functionality
+- Context toggle behavior
+- Conversation isolation
+- Performance validation
+- Edge cases and error scenarios
 
 ## 📚 Next Steps
 
