@@ -160,6 +160,7 @@ vercel --prod
 
 ## 🧪 Testing
 
+### Unit Tests
 ```bash
 # Run all tests
 npm test
@@ -173,6 +174,43 @@ npm test -- auth.test.js
 # Test chat context memory feature
 # See tests/chat-context.test.md for comprehensive test plan
 ```
+
+### Comprehensive Chatbot Testing
+
+A dedicated test suite validates chatbot responses across different user personas and scenarios:
+
+```bash
+# Run comprehensive chatbot tests (recommended)
+cd test
+node run-all-tests.js
+```
+
+This runs:
+1. **Dummy Data Pass** - Tests with controlled test data (20 custom opportunities)
+2. **Real Data Pass** - Tests with production opportunity database
+3. **Generates Reports** - Detailed markdown reports in `test-results/` directory
+
+**What it tests:**
+- 8 user personas (skilled workers, graduates, students, etc.)
+- 6 query categories (searches, conversations, off-topic)
+- ~384 total test cases
+- Response appropriateness, relevance, and quality
+- Real-world performance and data coverage
+
+**Reports include:**
+- Pass/fail statistics by persona and query type
+- Individual test results with scoring
+- Performance metrics (response time, opportunity counts)
+- Data gap analysis
+- Actionable recommendations
+
+See `test/README.md` for detailed documentation.
+
+**When to run:**
+- After modifying RAG pipeline or prompts
+- After updating opportunity database
+- Before production deployments
+- Weekly as regression tests
 
 ## 💬 Conversational Memory Feature
 

@@ -19,6 +19,16 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+# Test results and reports
+test-results/
+test-reports/
+*-test-results.md
+*-test-report.md
+dummy-opportunities-test-*.md
+real-opportunities-test-*.md
+chatbot-test-results-*.md
+comprehensive-test-*.md
+
 # Runtime data
 pids
 *.pid

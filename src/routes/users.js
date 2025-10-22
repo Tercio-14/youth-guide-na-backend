@@ -92,11 +92,14 @@ router.post('/profile', verifyToken, async (req, res) => {
   logger.info(`[POST /profile] === END REQUEST DEBUG ===`);
 
   try {
-    const { firstName, ageBracket, skills, interests, phone } = req.body;
+    const { firstName, ageBracket, location, education, employmentStatus, skills, interests, phone } = req.body;
     
     logger.debug(`[POST /profile] Extracted fields:`, {
       firstName: typeof firstName + ' - "' + firstName + '"',
       ageBracket: typeof ageBracket + ' - "' + ageBracket + '"',
+      location: typeof location + ' - "' + location + '"',
+      education: typeof education + ' - "' + education + '"',
+      employmentStatus: typeof employmentStatus + ' - "' + employmentStatus + '"',
       skills: typeof skills + ' - ' + JSON.stringify(skills),
       interests: typeof interests + ' - ' + JSON.stringify(interests),
       phone: typeof phone + ' - "' + phone + '"'
@@ -159,6 +162,9 @@ router.post('/profile', verifyToken, async (req, res) => {
     const profileData = {
       firstName: firstName.trim(),
       ageBracket,
+      location: location?.trim() || '',
+      education: education || '',
+      employmentStatus: employmentStatus || '',
       skills: skills.map(skill => skill.trim()).filter(Boolean),
       interests: interests.map(interest => interest.trim()).filter(Boolean),
       phone: phone?.trim() || null,

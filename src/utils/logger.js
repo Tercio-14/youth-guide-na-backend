@@ -25,8 +25,17 @@ const logger = winston.createLogger({
     }),
     winston.format.errors({ stack: true }),
     winston.format.colorize({ all: true }),
-    winston.format.printf(({ timestamp, level, message, stack }) => {
-      return `${timestamp} [${level}]: ${message} ${stack || ''}`;
+    winston.format.printf(({ timestamp, level, message, stack, ...metadata }) => {
+      // Format metadata (additional data objects)
+      let metaStr = '';
+      if (Object.keys(metadata).length > 0) {
+        // Remove winston internal properties
+        const { timestamp: _, level: __, message: ___, ...cleanMeta } = metadata;
+        if (Object.keys(cleanMeta).length > 0) {
+          metaStr = '\n' + JSON.stringify(cleanMeta, null, 2);
+        }
+      }
+      return `${timestamp} [${level}]: ${message}${metaStr} ${stack || ''}`;
     })
   ),
   transports: [

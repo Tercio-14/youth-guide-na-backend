@@ -2,8 +2,11 @@ const express = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { collections, admin } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { retrieveOpportunities } = require('../utils/rag'); // Updated to use new RAG system
+const { retrieveOpportunities, hybridRetrieveOpportunities } = require('../utils/rag'); // Updated to use new RAG system
 const { generateChatCompletion } = require('../utils/llm');
+
+// Feature flag: Enable AI-powered hybrid RAG (Two-Stage: TF-IDF + AI reranking)
+const USE_HYBRID_RAG = process.env.USE_HYBRID_RAG !== 'false'; // Enabled by default
 
 const router = express.Router();
 
@@ -24,11 +27,13 @@ function summarizeProfile(profile = {}) {
   const parts = [];
   if (profile.firstName) parts.push(`Name: ${profile.firstName}`);
   if (profile.ageBracket) parts.push(`Age bracket: ${profile.ageBracket}`);
+  if (profile.location) parts.push(`Location: ${profile.location}`);
+  if (profile.education) parts.push(`Education level: ${profile.education}`);
+  if (profile.employmentStatus) parts.push(`Employment status: ${profile.employmentStatus}`);
   const skills = Array.isArray(profile.skills) ? profile.skills.filter(Boolean) : [];
   if (skills.length) parts.push(`Skills: ${skills.join(', ')}`);
   const interests = Array.isArray(profile.interests) ? profile.interests.filter(Boolean) : [];
   if (interests.length) parts.push(`Interests: ${interests.join(', ')}`);
-  if (profile.location) parts.push(`Location preference: ${profile.location}`);
   return parts.join('\n') || 'No profile data provided.';
 }
 
@@ -74,6 +79,141 @@ Your response:`;
     logger.error('[Chat] Intent detection failed, defaulting to false', { error: error.message, stack: error.stack });
     // If LLM fails, default to NOT retrieving opportunities (safer)
     return false;
+  }
+}
+
+/**
+ * Use LLM to intelligently filter opportunities by user's specific intent
+ * Handles misspellings, synonyms, and contextual understanding
+ * This is the final filtering step after AI reranking
+ */
+async function filterOpportunitiesByIntent(opportunities, userMessage, userProfile) {
+  // Early return if no opportunities to filter
+  if (!opportunities || opportunities.length === 0) {
+    logger.info('[Chat] No opportunities to filter - returning empty array');
+    return [];
+  }
+
+  try {
+    logger.info('[Chat] Starting LLM intent-based filtering', {
+      opportunityCount: opportunities.length,
+      userMessage: userMessage.substring(0, 100)
+    });
+
+    // Build opportunity list for LLM
+    const opportunityList = opportunities.map((opp, index) => {
+      const parts = [
+        `${index + 1}. ${opp.title}`,
+        `Type: ${opp.type || 'Unknown'}`,
+      ];
+      if (opp.category) parts.push(`Category: ${opp.category}`);
+      if (opp.organization) parts.push(`Organization: ${opp.organization}`);
+      if (opp.location) parts.push(`Location: ${opp.location}`);
+      return parts.join(' | ');
+    }).join('\n');
+
+    const filterPrompt = `You are filtering opportunities based on user intent. Analyze what the user is specifically asking for.
+
+User query: "${userMessage}"
+
+User profile:
+${summarizeProfile(userProfile)}
+
+Available opportunities (${opportunities.length}):
+${opportunityList}
+
+**Task**: Determine if the user wants:
+A) **SPECIFIC types** only (e.g., scholarships, bursaries, training, internships, apprenticeships)
+B) **GENERAL opportunities** (any job, work, employment opportunities)
+
+**Instructions**:
+- If asking for SPECIFIC types (scholarships, training, internships, etc.):
+  → Return ONLY the numbers of opportunities that match (e.g., "1,3,5")
+  → Consider misspellings (e.g., "scholership" = scholarship, "learneship" = learnership/internship)
+  → Consider synonyms (e.g., "funding" = scholarship/bursary, "learning program" = training/course)
+  → If NONE match the specific request, return "NONE"
+
+- If asking for GENERAL opportunities (jobs, work, employment):
+  → Return "ALL"
+
+**Examples**:
+- "any scholarships?" → Return only scholarship/bursary numbers
+- "scholerships available?" → Return only scholarship numbers (handles misspelling)
+- "I need funding for school" → Return scholarship/bursary numbers (synonym)
+- "show me jobs near me" → Return "ALL"
+- "any work opportunities?" → Return "ALL"
+- "internships in windhoek?" → Return only internship/learnership numbers
+
+Your response (comma-separated numbers, "NONE", or "ALL"):`;
+
+    const result = await generateChatCompletion({
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are a precise opportunity filter. Respond ONLY with comma-separated numbers (e.g., "1,3"), "NONE", or "ALL". No explanations.' 
+        },
+        { role: 'user', content: filterPrompt }
+      ],
+      maxTokens: 50,
+      temperature: 0.1 // Low temperature for consistent filtering
+    });
+
+    const answer = result.text.trim().toUpperCase();
+    
+    logger.info('[Chat] LLM filtering response', { 
+      llmResponse: answer,
+      originalCount: opportunities.length
+    });
+
+    // Handle "ALL" - user wants general opportunities
+    if (answer === 'ALL') {
+      logger.info('[Chat] User wants general opportunities - keeping all results', {
+        count: opportunities.length
+      });
+      return opportunities;
+    }
+
+    // Handle "NONE" - no opportunities match user's specific request
+    if (answer === 'NONE') {
+      logger.info('[Chat] No opportunities match specific user request - returning empty array');
+      return [];
+    }
+
+    // Parse comma-separated numbers
+    const selectedIndices = answer
+      .split(',')
+      .map(s => s.trim())
+      .map(s => parseInt(s, 10) - 1) // Convert to 0-based index
+      .filter(i => !isNaN(i) && i >= 0 && i < opportunities.length);
+
+    // If parsing failed or no valid indices, keep all opportunities (safer fallback)
+    if (selectedIndices.length === 0) {
+      logger.warn('[Chat] LLM returned invalid response - keeping all opportunities as fallback', { 
+        llmResponse: answer 
+      });
+      return opportunities;
+    }
+
+    // Filter opportunities based on selected indices
+    const filteredOpportunities = selectedIndices.map(i => opportunities[i]);
+    
+    logger.info('[Chat] Successfully filtered opportunities by LLM intent', {
+      originalCount: opportunities.length,
+      filteredCount: filteredOpportunities.length,
+      selectedIndices: selectedIndices.map(i => i + 1), // Log as 1-based for readability
+      llmResponse: answer
+    });
+
+    return filteredOpportunities;
+
+  } catch (error) {
+    logger.error('[Chat] Intent-based filtering failed - keeping all opportunities as fallback', { 
+      error: error.message,
+      stack: error.stack,
+      opportunityCount: opportunities.length
+    });
+    // On error, return all opportunities (safer than returning empty)
+    return opportunities;
   }
 }
 
@@ -282,52 +422,120 @@ router.post('/', verifyToken, async (req, res) => {
       }
       const retrievalQuery = retrievalQueryParts.join('\n\n');
 
-      // Use new RAG system with preference-based ranking
+      // Use Two-Stage Hybrid RAG: Fast TF-IDF filtering + AI reranking
       const retrievalStartTime = Date.now();
-      retrievedOpportunities = await retrieveOpportunities(retrievalQuery, {
-        topK: MAX_OPPORTUNITIES,
-        minScore: 0.05, // Lower threshold for better recall
-        userProfile: mergedProfile, // Pass user profile for personalization
+      
+      // Log profile being used for RAG
+      logger.info('[Chat] User profile for RAG', {
+        hasSkills: !!(mergedProfile?.skills?.length),
+        skills: mergedProfile?.skills || [],
+        hasInterests: !!(mergedProfile?.interests?.length),
+        interests: mergedProfile?.interests || [],
+        location: mergedProfile?.location || 'Not specified',
+        ageBracket: mergedProfile?.ageBracket || 'Not specified'
       });
+
+      if (USE_HYBRID_RAG) {
+        // Stage 1: TF-IDF retrieves ~20 candidates
+        // Stage 2: AI reranks to get best 5
+        retrievedOpportunities = await hybridRetrieveOpportunities(retrievalQuery, {
+          topK: MAX_OPPORTUNITIES,
+          minScore: 0.01, // Lower threshold for Stage 1 (AI will filter in Stage 2)
+          userProfile: mergedProfile,
+        });
+        
+        logger.info('[Chat] Using Hybrid RAG (TF-IDF + AI reranking)');
+      } else {
+        // Fallback: Use only TF-IDF (Stage 1)
+        retrievedOpportunities = await retrieveOpportunities(retrievalQuery, {
+          topK: MAX_OPPORTUNITIES,
+          minScore: 0.05,
+          userProfile: mergedProfile,
+        });
+        
+        logger.info('[Chat] Using basic TF-IDF RAG (Hybrid disabled)');
+      }
+      
       retrievalLatencyMs = Date.now() - retrievalStartTime;
+
+      // Use LLM to intelligently filter opportunities by user's specific intent
+      // This replaces hardcoded keyword matching with context-aware AI filtering
+      // Handles misspellings, synonyms, and nuanced requests
+      retrievedOpportunities = await filterOpportunitiesByIntent(
+        retrievedOpportunities,
+        trimmedMessage,
+        mergedProfile
+      );
+
+      // Check if opportunities are poor matches (all AI scores below 65)
+      const hasPoorMatches = retrievedOpportunities.length > 0 && 
+        retrievedOpportunities.every(opp => (opp.aiScore || 0) < 65);
+      
+      if (hasPoorMatches) {
+        logger.warn('[Chat] All opportunities are poor matches for user profile', {
+          count: retrievedOpportunities.length,
+          avgAiScore: (retrievedOpportunities.reduce((sum, o) => sum + (o.aiScore || 0), 0) / retrievedOpportunities.length).toFixed(1),
+          userSkills: mergedProfile.skills,
+          userInterests: mergedProfile.interests
+        });
+        // Clear opportunities so system responds honestly about no good matches
+        retrievedOpportunities = [];
+      }
 
       promptOpportunities = formatOpportunitiesForPrompt(retrievedOpportunities);
       
       logger.info('[Chat] Retrieved opportunities', {
         count: retrievedOpportunities.length,
+        useHybridRAG: USE_HYBRID_RAG,
         latencyMs: retrievalLatencyMs
       });
     } else {
       logger.info('[Chat] Skipping opportunity retrieval - casual conversation');
     }
 
-  const systemMessage = `You are YouthGuide NA, a friendly and factual assistant that helps young people in Namibia find verified opportunities such as jobs, training, or scholarships.
+  const systemMessage = `You are YouthGuide NA, a helpful assistant for young people in Namibia seeking real opportunities (jobs, training, internships, scholarships).
 
-You will receive:
-- a short user message,
-- a short summary of their profile (skills, interests, etc.),
-- and POSSIBLY a list of retrieved opportunities from the database (only if the user is asking for them).
+**Your Core Principles:**
+1. **Factual & Grounded**: Only share information from verified opportunities in the database. Never invent opportunities, requirements, or details.
+2. **Short & Direct**: Keep responses under 50 words. Get to the point quickly - youth appreciate brevity.
+3. **Personalized**: When opportunities match a user's profile (skills, interests, location), explain WHY they're a good fit in 1-2 sentences.
+4. **Youth-Friendly Tone**: Be warm, encouraging, and conversational - like a supportive older sibling, not a formal counselor.
 
-Guidelines:
-1. If the user greets you, respond warmly and ask if they need help finding opportunities.
-2. If the user talks about something unrelated (food, hobbies, personal topics), respond with genuine empathy and interest first, then naturally transition to opportunities. Show you're listening and care about them as a person.
-3. DO NOT be dismissive or robotic. Be warm, friendly, and personable while guiding them toward opportunities.
-4. When the user requests opportunities AND opportunities are provided below, summarise the top 2-3 in plain sentences.
-5. If the user asked for opportunities but none are available, say: "I couldn't find any new opportunities right now, but I'll keep an eye out for you."
-6. Never invent opportunities. Only use what's provided below.
-7. Keep responses under 70 words but make them feel genuine and warm.
+**Response Guidelines:**
 
-Example responses:
-- Off-topic (food): "Pizza sounds amazing, I'd definitely go for it! 🍕 By the way, while you're thinking about lunch, I'm here whenever you want to explore job or training opportunities. No rush though - enjoy your meal first!"
-- Frustration: "I totally get your frustration, and I apologize if I came across wrong. I'm here to support you however I can. If you're interested in finding opportunities like jobs or training, I'd love to help with that. What matters most to you right now?"
-- Greeting: "Hey! I'm doing great, thanks for asking! 😊 I help young people find opportunities like jobs, training, or scholarships. What are you looking for today?"`;
+*When opportunities are provided:*
+- Write a brief personalized intro (2-3 sentences max) explaining why these opportunities match the user's profile
+- Mention specific skills/interests from their profile that align
+- DO NOT list opportunity details - they'll be shown as cards separately
+- Example: "I found 3 tech opportunities that match your IT skills! Two offer remote work, which is perfect since you're in Windhoek. Check them out below."
+
+*When NO opportunities are found OR when opportunities don't match what the user asked for:*
+- Be honest and encouraging: "I couldn't find any [specific thing they asked for] at the moment. Try broadening your search or check back later."
+- DO NOT show opportunities that don't match their request (e.g., don't show jobs if they asked for scholarships)
+- Example: "I didn't find any scholarships right now, but I'll keep looking. You can also try searching for training programs or internships."
+
+*For casual conversation or greetings:*
+- Respond warmly but briefly
+- Gently guide toward opportunities without being pushy
+- Example: "Hey! 👋 Great to hear from you. I'm here to help you find jobs, training, or internships in Namibia. What are you interested in?"
+
+*For off-topic questions:*
+- Acknowledge their message with genuine empathy (1 sentence)
+- Smoothly redirect to opportunities
+- Example: "That sounds tough - job hunting can be stressful! Let me help you find something that fits your skills. What kind of work interests you?"
+
+**Critical Rules:**
+- Never fabricate opportunity details, deadlines, or requirements
+- If you don't have information, say so clearly
+- Keep responses conversational, short, and actionable
+- Always respect the user's time with concise, helpful answers`;
 
     const userMessageForLLM = [
       `User query:\n${trimmedMessage}`,
       `User profile summary:\n${profileSummary}`,
       `Retrieved opportunities:\n${promptOpportunities}`,
       requestingOpportunities 
-        ? 'The user is asking for opportunities. If opportunities are provided above, summarise them naturally. If not, let them know you couldn\'t find any.'
+        ? 'The user is asking for opportunities. If opportunities are provided above, write a warm, personalized intro explaining WHY these match their profile (mention their skills, interests, or preferences). DO NOT list the opportunity details - they will be shown as cards separately. Just write an encouraging 2-3 sentence intro. If no opportunities found, let them know you couldn\'t find any right now.'
         : 'The user is NOT asking for opportunities - they are chatting casually or discussing off-topic subjects. Respond warmly and genuinely to what they said, showing empathy and personality. Then naturally guide the conversation toward opportunities without being pushy. Make them feel heard and valued.',
     ].join('\n\n');
 
@@ -405,6 +613,152 @@ Example responses:
     return res.status(500).json({
       error: 'Chat processing failed',
       message: "Sorry, I couldn't process your message right now. Please try again.",
+    });
+  }
+});
+
+// Get messages for a specific conversation
+router.get('/conversation/:conversationId', verifyToken, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.uid;
+
+    logger.info('[Chat History] Fetching conversation messages', {
+      conversationId,
+      userId
+    });
+
+    // Verify conversation belongs to user
+    const conversationDoc = await collections.chats.doc(conversationId).get();
+    
+    if (!conversationDoc.exists) {
+      logger.warn('[Chat History] Conversation not found', { conversationId });
+      return res.json({
+        success: true,
+        messages: []
+      });
+    }
+
+    const conversationData = conversationDoc.data();
+    if (conversationData.userId !== userId) {
+      logger.warn('[Chat History] Access denied - conversation belongs to different user', {
+        conversationId,
+        requestingUserId: userId,
+        conversationUserId: conversationData.userId
+      });
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'You can only access your own conversations',
+      });
+    }
+
+    // Fetch messages from subcollection
+    const messagesSnapshot = await collections.chats
+      .doc(conversationId)
+      .collection('messages')
+      .orderBy('timestamp', 'asc')
+      .get();
+
+    const messages = messagesSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        role: data.role,
+        content: data.content,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
+        opportunities: data.opportunities || []
+      };
+    });
+
+    logger.info('[Chat History] Messages retrieved successfully', {
+      conversationId,
+      messageCount: messages.length
+    });
+
+    return res.json({
+      success: true,
+      conversationId,
+      messages
+    });
+
+  } catch (error) {
+    logger.error('[Chat History] Error fetching conversation messages:', error);
+    return res.status(500).json({
+      error: 'Failed to retrieve conversation messages',
+      message: error.message,
+    });
+  }
+});
+
+// GET /conversations/recent - Get recent conversations for the current user
+router.get('/conversations/recent', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const limit = parseInt(req.query.limit, 10) || 5;
+
+    logger.info(`[Recent Conversations] Fetching recent conversations for user: ${userId}, limit: ${limit}`);
+
+    // Get all conversations for this user
+    const chatsSnapshot = await collections.chats
+      .where('userId', '==', userId)
+      .orderBy('updatedAt', 'desc')
+      .limit(limit)
+      .get();
+
+    if (chatsSnapshot.empty) {
+      logger.info(`[Recent Conversations] No conversations found for user: ${userId}`);
+      return res.json({
+        success: true,
+        conversations: [],
+      });
+    }
+
+    const conversations = [];
+
+    for (const chatDoc of chatsSnapshot.docs) {
+      const conversationId = chatDoc.id;
+      
+      // Get the first user message from this conversation
+      const messagesSnapshot = await collections.chats
+        .doc(conversationId)
+        .collection('messages')
+        .where('role', '==', 'user')
+        .orderBy('timestamp', 'asc')
+        .limit(1)
+        .get();
+
+      // Get total message count
+      const allMessagesSnapshot = await collections.chats
+        .doc(conversationId)
+        .collection('messages')
+        .get();
+
+      const firstMessage = !messagesSnapshot.empty 
+        ? messagesSnapshot.docs[0].data().content 
+        : 'New conversation';
+
+      const chatData = chatDoc.data();
+
+      conversations.push({
+        id: conversationId,
+        firstMessage: firstMessage.substring(0, 100), // Truncate for preview
+        lastUpdated: chatData.updatedAt?.toDate ? chatData.updatedAt.toDate().toISOString() : new Date().toISOString(),
+        messageCount: allMessagesSnapshot.size,
+      });
+    }
+
+    logger.info(`[Recent Conversations] Found ${conversations.length} conversations for user: ${userId}`);
+
+    return res.json({
+      success: true,
+      conversations,
+    });
+
+  } catch (error) {
+    logger.error('[Recent Conversations] Error fetching recent conversations:', error);
+    return res.status(500).json({
+      error: 'Failed to retrieve recent conversations',
+      message: error.message,
     });
   }
 });

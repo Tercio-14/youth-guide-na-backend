@@ -5,6 +5,21 @@ const logger = require('../utils/logger');
  * Middleware to verify Firebase Auth token
  */
 const verifyToken = async (req, res, next) => {
+  // TEST MODE: Skip authentication if enabled (for automated testing only)
+  if (process.env.DISABLE_AUTH_FOR_TESTING === 'true') {
+    logger.warn('[AUTH] Test mode enabled - authentication bypassed');
+    req.user = {
+      uid: 'test-user-id',
+      email: 'test@youthguide.na',
+      emailVerified: true,
+      name: 'Test User',
+      authTime: Math.floor(Date.now() / 1000),
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600
+    };
+    return next();
+  }
+
   let token;
 
   try {

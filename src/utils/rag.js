@@ -44,11 +44,19 @@ async function loadOpportunities() {
     const data = await fs.readFile(OPPORTUNITIES_PATH, 'utf8');
     const parsed = JSON.parse(data);
     
-    opportunitiesCache = parsed.opportunities || [];
+    // Filter out example/test opportunities
+    // Example opportunities have generic descriptions that score too high
+    const allOpportunities = parsed.opportunities || [];
+    opportunitiesCache = allOpportunities.filter(opp => 
+      opp.source !== 'Example Website'
+    );
+    
     lastLoadTime = now;
     
     logger.info('[RAG] Loaded opportunities from file', {
+      total: allOpportunities.length,
       count: opportunitiesCache.length,
+      filtered: allOpportunities.length - opportunitiesCache.length,
       sources: parsed.sources || [],
       lastUpdated: parsed.last_updated
     });
@@ -166,16 +174,28 @@ function cosineSimilarity(vec1, vec2) {
 
 /**
  * Create searchable text from opportunity
+ * @param {object} opportunity - The opportunity object
+ * @param {object} options - Options for creating searchable text
+ * @param {boolean} options.excludeLocation - Whether to exclude location from searchable text
+ * @param {boolean} options.excludeType - Whether to exclude type from searchable text
  */
-function createSearchableText(opportunity) {
+function createSearchableText(opportunity, options = {}) {
+  const { excludeLocation = false, excludeType = false } = options;
+  
   const parts = [
     opportunity.title || '',
     opportunity.description || '',
     opportunity.organization || '',
-    opportunity.location || '',
-    opportunity.type || '',
     opportunity.source || ''
   ];
+  
+  if (!excludeLocation) {
+    parts.push(opportunity.location || '');
+  }
+  
+  if (!excludeType) {
+    parts.push(opportunity.type || '');
+  }
   
   return parts.join(' ');
 }
@@ -250,7 +270,7 @@ function calculatePreferenceBoost(opportunity, userProfile) {
 async function retrieveOpportunities(query, options = {}) {
   const {
     topK = 5,
-    minScore = 0.05, // Lower default threshold for better recall
+    minScore = 0.01, // Very low default threshold for better recall
     userProfile = null,
     filterTypes = null,
     filterLocation = null
@@ -308,16 +328,85 @@ async function retrieveOpportunities(query, options = {}) {
     
     if (queryTokens.length === 0) {
       logger.warn('[RAG] Empty query after tokenization');
-      // Return random sample for empty queries
-      return filteredOpps
-        .sort(() => 0.5 - Math.random())
-        .slice(0, topK)
-        .map(opp => ({ ...opp, score: 0.5 }));
+      // Return empty array for empty queries
+      return [];
     }
+    
+    // Check if this is a very generic query (e.g., "looking for a job", "find opportunities")
+    const genericQueryTerms = ['looking', 'find', 'want', 'need', 'search', 'searching'];
+    const typeTerms = ['job', 'jobs', 'training', 'internship', 'scholarship', 'opportunity', 'opportunities'];
+    
+    const hasGenericTerm = queryTokens.some(token => genericQueryTerms.includes(token));
+    const hasTypeTerm = queryTokens.some(token => typeTerms.includes(token));
+    const isVeryGenericQuery = hasGenericTerm && hasTypeTerm && queryTokens.length <= 5;
+    
+    if (isVeryGenericQuery) {
+      logger.info('[RAG] Detected generic query, using random sampling approach', {
+        query,
+        queryTokens
+      });
+      
+      // For generic queries, return a diverse sample based on recency and type
+      // This prevents returning nothing when user just says "find me jobs"
+      const scoredOpportunities = filteredOpps.map(opp => {
+        const preferenceBoost = calculatePreferenceBoost(opp, userProfile);
+        
+        // Base score from recency
+        let baseScore = 0.05;
+        if (opp.date_posted) {
+          const postedDate = new Date(opp.date_posted);
+          const daysSince = (Date.now() - postedDate.getTime()) / (1000 * 60 * 60 * 24);
+          
+          if (daysSince < 7) {
+            baseScore = 0.20;
+          } else if (daysSince < 30) {
+            baseScore = 0.15;
+          } else if (daysSince < 90) {
+            baseScore = 0.10;
+          }
+        }
+        
+        // Apply profile boost if available
+        const finalScore = baseScore * preferenceBoost;
+        
+        return {
+          ...opp,
+          score: finalScore,
+          _debug: {
+            semanticScore: 0,
+            preferenceBoost,
+            typeAlignmentBoost: 1.0,
+            boosted: preferenceBoost > 1.0,
+            genericQuery: true
+          }
+        };
+      });
+      
+      // Sort by score and return top K
+      const ranked = scoredOpportunities
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
+      
+      logger.info('[RAG] Retrieval complete', {
+        totalCandidates: filteredOpps.length,
+        returned: ranked.length,
+        genericQuery: true
+      });
+      
+      return ranked;
+    }
+    
+    // Determine what to exclude from searchable text based on filters
+    // If we're filtering by location/type, exclude those from semantic search
+    // to avoid artificially lowering relevance scores
+    const searchOptions = {
+      excludeLocation: !!filterLocation,
+      excludeType: !!(filterTypes && filterTypes.length > 0)
+    };
     
     // Tokenize all documents
     const documents = filteredOpps.map(opp => 
-      tokenize(createSearchableText(opp))
+      tokenize(createSearchableText(opp, searchOptions))
     );
     
     // Calculate IDF
@@ -331,14 +420,53 @@ async function retrieveOpportunities(query, options = {}) {
       const docTFIDF = calculateTFIDF(documents[index], idf);
       const semanticScore = cosineSimilarity(queryTFIDF, docTFIDF);
       const preferenceBoost = calculatePreferenceBoost(opp, userProfile);
-      const finalScore = semanticScore * preferenceBoost;
+      
+      // Query-type alignment boost
+      // If query mentions a type (training, job, internship, scholarship), boost that type
+      let typeAlignmentBoost = 1.0;
+      const queryLower = query.toLowerCase();
+      const oppType = (opp.type || '').toLowerCase();
+      
+      if (queryLower.includes('training') && oppType === 'training') {
+        typeAlignmentBoost = 2.0; // Strong boost for Training when explicitly requested
+      } else if (queryLower.includes('internship') && oppType === 'internship') {
+        typeAlignmentBoost = 2.0;
+      } else if (queryLower.includes('scholarship') && oppType === 'scholarship') {
+        typeAlignmentBoost = 2.0;
+      } else if (queryLower.includes('bursary') && oppType === 'scholarship') {
+        typeAlignmentBoost = 2.0;
+      } else if ((queryLower.includes('job') || queryLower.includes('position')) && oppType === 'job') {
+        typeAlignmentBoost = 1.3; // Moderate boost for Jobs (more common)
+      }
+      
+      // Apply preference boost
+      // For generic queries with low semantic relevance, profile boost becomes more important
+      let finalScore = semanticScore;
+      
+      if (preferenceBoost > 1.0) {
+        if (semanticScore > 0) {
+          // Boost existing semantic score multiplicatively
+          finalScore = semanticScore * preferenceBoost;
+        } else if (preferenceBoost > 1.2) {
+          // For strong profile matches (boost > 1.2), assign a base score even if semantic is 0
+          // This ensures profile-relevant opportunities appear for generic queries
+          // Use a stronger base score to ensure it passes typical thresholds
+          finalScore = (preferenceBoost - 1.0) * 0.3; // Convert boost to base score
+        }
+      }
+      
+      // Apply query-type alignment boost
+      // This ensures Training opportunities rank higher when user asks for "training"
+      finalScore = finalScore * typeAlignmentBoost;
       
       return {
         ...opp,
         score: finalScore,
         _debug: {
           semanticScore,
-          preferenceBoost
+          preferenceBoost,
+          typeAlignmentBoost,
+          boosted: preferenceBoost > 1.0
         }
       };
     });
@@ -369,6 +497,29 @@ async function retrieveOpportunities(query, options = {}) {
 }
 
 /**
+ * Two-Stage Hybrid RAG: Fast TF-IDF filtering + AI reranking
+ * 
+ * This is the recommended method for production use as it combines:
+ * - Fast Stage 1 filtering (TF-IDF) to get top 20 candidates
+ * - Accurate Stage 2 AI reranking to get final top 5
+ * 
+ * @param {string} query - User's search query
+ * @param {object} options - Retrieval options
+ * @returns {Promise<Array>} - AI-reranked opportunities
+ */
+async function hybridRetrieveOpportunities(query, options = {}) {
+  const { hybridRetrieve } = require('./ai-reranker');
+  
+  // Use current retrieveOpportunities as Stage 1
+  return await hybridRetrieve(retrieveOpportunities, query, {
+    stage1TopK: 20,        // Get 20 candidates from Stage 1
+    stage2TopK: options.topK || 5,  // Return 5 after AI reranking
+    stage2MinScore: 30,    // Minimum AI score (0-100)
+    ...options
+  });
+}
+
+/**
  * Clear opportunities cache (useful after scraping new data)
  */
 function clearCache() {
@@ -378,7 +529,8 @@ function clearCache() {
 }
 
 module.exports = {
-  retrieveOpportunities,
+  retrieveOpportunities,          // Stage 1 only (TF-IDF)
+  hybridRetrieveOpportunities,    // Two-Stage Hybrid (Recommended)
   loadOpportunities,
   clearCache
 };

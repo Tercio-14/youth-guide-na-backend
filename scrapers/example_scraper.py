@@ -98,6 +98,15 @@ def scrape() -> List[Dict]:
         days_ago = random.randint(1, 30)
         date_posted = (datetime.now() - timedelta(days=days_ago)).strftime('%Y-%m-%d')
         
+        # Use actual Namibian job boards or government websites for URLs
+        # These are placeholder URLs - should be replaced with actual source URLs
+        base_urls = {
+            'Job': 'https://jobsinnamibia.info',
+            'Training': 'https://www.nta.com.na',
+            'Internship': 'https://mti.gov.na',
+            'Scholarship': 'https://www.nsfaf.na'
+        }
+        
         opportunity = {
             'id': f'example_{idx + 1}',
             'source': 'Example Website',
@@ -106,7 +115,8 @@ def scrape() -> List[Dict]:
             'organization': example['organization'],
             'location': example['location'],
             'description': example['description'],
-            'url': f'https://example.com/opportunities/{idx + 1}',
+            # Use the appropriate base URL for the opportunity type
+            'url': base_urls.get(example['type'], 'https://jobsinnamibia.info'),
             'date_posted': date_posted,
             'verified': True
         }
