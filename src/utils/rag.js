@@ -539,20 +539,73 @@ async function retrieveOpportunities(query, options = {}) {
  * - Fast Stage 1 filtering (TF-IDF) to get top 20 candidates
  * - Accurate Stage 2 AI reranking to get final top 5
  * 
+ * OFFLINE MODE: When isOfflineMode=true, forces dummy data and skips AI reranking
+ * 
  * @param {string} query - User's search query
  * @param {object} options - Retrieval options
- * @returns {Promise<Array>} - AI-reranked opportunities
+ * @param {boolean} isOfflineMode - If true, use dummy data and skip AI reranking
+ * @returns {Promise<Object>} - { opportunities: Array, isOffline: boolean }
  */
-async function hybridRetrieveOpportunities(query, options = {}) {
-  const { hybridRetrieve } = require('./ai-reranker');
-  
-  // Use current retrieveOpportunities as Stage 1
-  return await hybridRetrieve(retrieveOpportunities, query, {
-    stage1TopK: 20,        // Get 20 candidates from Stage 1
-    stage2TopK: options.topK || 5,  // Return 5 after AI reranking
-    stage2MinScore: 30,    // Minimum AI score (0-100)
-    ...options
-  });
+async function hybridRetrieveOpportunities(query, options = {}, isOfflineMode = false) {
+  try {
+    // OFFLINE MODE: Force dummy data source and skip AI reranking
+    if (isOfflineMode) {
+      logger.info('[RAG] Offline mode: Using dummy data, skipping AI reranking');
+      
+      // Temporarily override data source to dummy
+      const originalGetter = getDataSourceConfig;
+      getDataSourceConfig = () => 'dummy';
+      
+      try {
+        // Use Stage 1 only (TF-IDF) - no AI reranking
+        const results = await retrieveOpportunities(query, {
+          topK: options.topK || 5,
+          ...options
+        });
+        
+        // Restore original getter
+        getDataSourceConfig = originalGetter;
+        
+        logger.info(`[RAG] Offline mode returned ${results.length} opportunities`);
+        
+        return {
+          opportunities: results,
+          isOffline: true,
+          usedAI: false,
+          dataSource: 'dummy'
+        };
+      } catch (error) {
+        // Restore getter even on error
+        getDataSourceConfig = originalGetter;
+        throw error;
+      }
+    }
+    
+    // ONLINE MODE: Use normal hybrid retrieval with AI reranking
+    const { hybridRetrieve } = require('./ai-reranker');
+    
+    // Use current retrieveOpportunities as Stage 1
+    const results = await hybridRetrieve(retrieveOpportunities, query, {
+      stage1TopK: 20,        // Get 20 candidates from Stage 1
+      stage2TopK: options.topK || 5,  // Return 5 after AI reranking
+      stage2MinScore: 30,    // Minimum AI score (0-100)
+      ...options
+    });
+    
+    return {
+      opportunities: results,
+      isOffline: false,
+      usedAI: true,
+      dataSource: getDataSourceConfig ? getDataSourceConfig() : 'opportunities'
+    };
+    
+  } catch (error) {
+    logger.error('[RAG] Hybrid retrieval failed', {
+      error: error.message,
+      isOfflineMode
+    });
+    throw error;
+  }
 }
 
 /**

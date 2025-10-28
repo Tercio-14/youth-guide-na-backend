@@ -1,0 +1,13 @@
+{
+  "userId": "offline-user-default",
+  "email": "offline@youthguide.local",
+  "firstName": "Offline",
+  "lastName": "User",
+  "location": "Windhoek",
+  "education": "Grade 12",
+  "skills": ["Communication", "Computer Literacy"],
+  "interests": ["Technology", "Business"],
+  "createdAt": "2025-10-28T00:00:00.000Z",
+  "updatedAt": "2025-10-28T00:00:00.000Z",
+  "isOfflineUser": true
+}
