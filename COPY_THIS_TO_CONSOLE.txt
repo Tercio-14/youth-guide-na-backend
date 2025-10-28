@@ -1,0 +1,27 @@
+════════════════════════════════════════════════════════════════════════════════
+  📋 COPY THIS COMMAND - Paste into Browser Console (F12) to get your token
+════════════════════════════════════════════════════════════════════════════════
+
+STEP 1: Make sure you're logged into YouthGuide NA (http://localhost:5173)
+STEP 2: Press F12 to open console
+STEP 3: Copy and paste this entire command:
+
+(async function() { if (!window.firebaseAuth?.currentUser) { console.error('❌ Not logged in! Please log in first.'); return; } const token = await window.firebaseAuth.currentUser.getIdToken(); try { await navigator.clipboard.writeText(token); console.log('✅ Token copied to clipboard!'); } catch (e) { console.log('� Copy manually (click to select all, then Ctrl+C):'); console.log(token); } console.log('�👤 User:', window.firebaseAuth.currentUser.email); console.log('� Token length:', token.length, 'characters'); })();
+
+STEP 4: Press Enter
+STEP 5: Token is displayed below - Select it and copy (Ctrl+C), then paste into Postman!
+
+════════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+
+❌ Error: "firebaseAuth is not defined"
+   → Refresh the page and wait for app to fully load
+
+❌ Error: "Not logged in"
+   → Log in to YouthGuide NA first, then try again
+
+❌ Token expired after 1 hour?
+   → Run the same command again to get a fresh token
+
+════════════════════════════════════════════════════════════════════════════════

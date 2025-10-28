@@ -16,13 +16,27 @@ const fs = require('fs').promises;
 const path = require('path');
 const logger = require('./logger');
 
-// Path to opportunities data
+// Paths to opportunities data
 const OPPORTUNITIES_PATH = path.join(__dirname, '../../data/opportunities.json');
+const DUMMY_OPPORTUNITIES_PATH = path.join(__dirname, '../../test/dummy-opportunities.json');
+
+// Function to get current data source (will be set by config route)
+let getDataSourceConfig = null;
 
 // Cache for loaded opportunities
 let opportunitiesCache = null;
 let lastLoadTime = null;
+let lastDataSource = null; // Track which data source was cached
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Set the data source config getter function
+ * This allows the config route to control which data source is used
+ */
+function setDataSourceConfigGetter(getter) {
+  getDataSourceConfig = getter;
+  logger.info('[RAG] Data source config getter registered');
+}
 
 /**
  * Load opportunities from JSON file with caching
@@ -31,9 +45,17 @@ async function loadOpportunities() {
   try {
     const now = Date.now();
     
-    // Return cached data if still valid
-    if (opportunitiesCache && lastLoadTime && (now - lastLoadTime) < CACHE_TTL) {
+    // Determine which data source to use
+    const currentDataSource = getDataSourceConfig ? getDataSourceConfig() : 'opportunities';
+    const dataPath = currentDataSource === 'dummy' ? DUMMY_OPPORTUNITIES_PATH : OPPORTUNITIES_PATH;
+    
+    // Return cached data if still valid AND from the same data source
+    if (opportunitiesCache && 
+        lastLoadTime && 
+        lastDataSource === currentDataSource &&
+        (now - lastLoadTime) < CACHE_TTL) {
       logger.debug('[RAG] Using cached opportunities', {
+        source: currentDataSource,
         count: opportunitiesCache.length,
         cacheAge: Math.floor((now - lastLoadTime) / 1000) + 's'
       });
@@ -41,19 +63,33 @@ async function loadOpportunities() {
     }
 
     // Load fresh data
-    const data = await fs.readFile(OPPORTUNITIES_PATH, 'utf8');
+    logger.info('[RAG] Loading opportunities from file', {
+      source: currentDataSource,
+      path: dataPath
+    });
+    
+    const data = await fs.readFile(dataPath, 'utf8');
     const parsed = JSON.parse(data);
     
-    // Filter out example/test opportunities
+    // Filter out example/test opportunities (only for real data)
     // Example opportunities have generic descriptions that score too high
     const allOpportunities = parsed.opportunities || [];
-    opportunitiesCache = allOpportunities.filter(opp => 
-      opp.source !== 'Example Website'
-    );
+    
+    if (currentDataSource === 'dummy') {
+      // For dummy data, keep everything
+      opportunitiesCache = allOpportunities;
+    } else {
+      // For real data, filter out examples
+      opportunitiesCache = allOpportunities.filter(opp => 
+        opp.source !== 'Example Website'
+      );
+    }
     
     lastLoadTime = now;
+    lastDataSource = currentDataSource;
     
     logger.info('[RAG] Loaded opportunities from file', {
+      source: currentDataSource,
       total: allOpportunities.length,
       count: opportunitiesCache.length,
       filtered: allOpportunities.length - opportunitiesCache.length,
@@ -532,5 +568,6 @@ module.exports = {
   retrieveOpportunities,          // Stage 1 only (TF-IDF)
   hybridRetrieveOpportunities,    // Two-Stage Hybrid (Recommended)
   loadOpportunities,
-  clearCache
+  clearCache,
+  setDataSourceConfigGetter       // Allow config route to control data source
 };

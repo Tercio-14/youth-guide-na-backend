@@ -6,6 +6,7 @@ const compression = require('compression');
 
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
+const { setDataSourceConfigGetter } = require('./utils/rag');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -15,6 +16,11 @@ const userRoutes = require('./routes/users');
 const adminRoutes = require('./routes/admin');
 const scraperRoutes = require('./routes/scraper');
 const savedRoutes = require('./routes/saved');
+const feedbackRoutes = require('./routes/feedback');
+const { router: configRoutes, getCurrentDataSource } = require('./routes/config');
+
+// Connect data source configuration to RAG system
+setDataSourceConfigGetter(getCurrentDataSource);
 
 const app = express();
 
@@ -185,7 +191,13 @@ app.get('/api', (req, res) => {
       'POST /api/auth/verify': 'Verify Firebase auth token',
       'POST /api/scrape': 'Trigger manual web scraping (admin only)',
       'GET /api/scrape/status': 'Get scraper status and last run info',
-      'GET /api/scrape/data': 'Get raw scraped data'
+      'GET /api/scrape/data': 'Get raw scraped data',
+      'POST /api/feedback': 'Submit feedback on opportunity',
+      'GET /api/feedback/opportunity/:id': 'Get feedback stats for opportunity',
+      'GET /api/feedback/user': 'Get user feedback history',
+      'GET /api/config/data-source': 'Check current data source (opportunities or dummy)',
+      'POST /api/config/data-source': 'Switch data source (authenticated)',
+      'POST /api/config/reset': 'Reset to default data source (authenticated)'
     },
     documentation: 'https://github.com/Tercio-14/youth-guide-na-backend'
   });
@@ -199,6 +211,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/scrape', scraperRoutes);
 app.use('/api/saved', savedRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/config', configRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

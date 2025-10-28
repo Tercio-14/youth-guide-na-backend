@@ -52,6 +52,8 @@ module.exports = {
     opportunities: db.collection('opportunities'), 
     chats: db.collection('chats'),
     embeddings: db.collection('embeddings'),
-    analytics: db.collection('analytics')
+    analytics: db.collection('analytics'),
+    saved: db.collection('saved'),
+    feedback: db.collection('feedback')
   }
 };

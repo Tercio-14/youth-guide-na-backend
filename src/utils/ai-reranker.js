@@ -108,6 +108,9 @@ function buildScoringPrompt(userQuery, userProfile, opportunity) {
     if (userProfile.location) {
       profileContext.push(`Location: ${userProfile.location}`);
     }
+    if (userProfile.education) {
+      profileContext.push(`Education Level: ${userProfile.education}`);
+    }
     if (userProfile.preferredTypes && userProfile.preferredTypes.length > 0) {
       profileContext.push(`Preferred Types: ${userProfile.preferredTypes.join(', ')}`);
     }
@@ -132,13 +135,15 @@ OPPORTUNITY:
 - Organization: ${opportunity.organization || 'Unknown'}
 - Location: ${opportunity.location}
 - Description: ${opportunity.description}
+- Education Requirements: ${opportunity.requirements || opportunity.education_required || 'Not specified'}
 
 EVALUATION CRITERIA:
-1. **Skill Match** (30%): Does the opportunity match the user's skills? Consider synonyms and related skills (e.g., "cooking" matches "chef", "culinary", "kitchen staff").
-2. **Query Relevance** (30%): Does it directly address what the user is asking for in their query?
-3. **Interest Alignment** (20%): Does it align with the user's stated interests and career goals?
-4. **Location Fit** (10%): Is the location accessible or matches user's location preference?
-5. **Type Match** (10%): Does the opportunity type (Job/Training/Internship/Scholarship) match the user's needs?
+1. **Skill Match** (25%): Does the opportunity match the user's skills? Consider synonyms and related skills (e.g., "cooking" matches "chef", "culinary", "kitchen staff").
+2. **Query Relevance** (25%): Does it directly address what the user is asking for in their query?
+3. **Education Level Match** (20%): Does the user's education level meet or exceed the opportunity's requirements? Give higher scores when the user's education matches or exceeds requirements. Education hierarchy: Tertiary > Grade 12 > Grade 10 > Grade 8 or below. If no requirements specified, assume it's suitable for all levels.
+4. **Interest Alignment** (15%): Does it align with the user's stated interests and career goals?
+5. **Location Fit** (10%): Is the location accessible or matches user's location preference?
+6. **Type Match** (5%): Does the opportunity type (Job/Training/Internship/Scholarship) match the user's needs?
 
 SCORING GUIDELINES:
 - 90-100: Excellent match - opportunity strongly aligns with user's skills, query intent, and profile

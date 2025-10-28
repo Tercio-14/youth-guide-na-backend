@@ -1,0 +1,407 @@
+{
+	"info": {
+		"_postman_id": "youthguide-na-config-api",
+		"name": "YouthGuide NA - Data Source Config",
+		"description": "API endpoints for switching between real and dummy data sources for testing.\n\nSetup:\n1. Set `firebase_token` in collection variables (get from browser console)\n2. Run 'Get Data Source Status' to verify connection\n3. Use switch endpoints to toggle between data sources\n\nSee POSTMAN_SETUP_GUIDE.md for detailed instructions.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get Data Source Status",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has dataSource field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('dataSource');",
+							"});",
+							"",
+							"pm.test(\"Response has valid source\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(['opportunities', 'dummy']).to.include(jsonData.dataSource);",
+							"});",
+							"",
+							"// Log current source",
+							"const jsonData = pm.response.json();",
+							"console.log(`📊 Current Data Source: ${jsonData.dataSource}`);",
+							"console.log(`📁 Path: ${jsonData.path}`);",
+							"console.log(`📝 Description: ${jsonData.description}`);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/config/data-source",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"config",
+						"data-source"
+					]
+				},
+				"description": "Check which data source is currently active (opportunities.json or dummy-opportunities.json). This endpoint does not require authentication."
+			},
+			"response": [
+				{
+					"name": "Using Real Data",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/config/data-source",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"config",
+								"data-source"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"dataSource\": \"opportunities\",\n  \"path\": \"data/opportunities.json\",\n  \"description\": \"Using real scraped opportunities data\",\n  \"timestamp\": \"2025-01-15T10:30:00.000Z\"\n}"
+				},
+				{
+					"name": "Using Dummy Data",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/config/data-source",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"config",
+								"data-source"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"dataSource\": \"dummy\",\n  \"path\": \"test/dummy-opportunities.json\",\n  \"description\": \"Using dummy test data (25 opportunities)\",\n  \"timestamp\": \"2025-01-15T10:30:00.000Z\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Switch to Dummy Data",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response indicates success\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"});",
+							"",
+							"pm.test(\"Source was processed\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('currentSource');",
+							"    pm.expect(jsonData.currentSource).to.equal('dummy');",
+							"});",
+							"",
+							"// Log the switch",
+							"const jsonData = pm.response.json();",
+							"if (jsonData.changed) {",
+							"    console.log(`✅ Switched from ${jsonData.previousSource} to ${jsonData.currentSource}`);",
+							"} else {",
+							"    console.log(`ℹ️ Already using ${jsonData.currentSource}`);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"source\": \"dummy\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/config/data-source",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"config",
+						"data-source"
+					]
+				},
+				"description": "Switch to using test/dummy-opportunities.json (25 test opportunities). Requires Firebase authentication token."
+			},
+			"response": [
+				{
+					"name": "Successfully Switched",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"source\": \"dummy\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/config/data-source",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"config",
+								"data-source"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Switched to dummy data\",\n  \"previousSource\": \"opportunities\",\n  \"currentSource\": \"dummy\",\n  \"changed\": true,\n  \"path\": \"test/dummy-opportunities.json\",\n  \"note\": \"Cache will be cleared on next opportunity request\",\n  \"timestamp\": \"2025-01-15T10:35:00.000Z\"\n}"
+				},
+				{
+					"name": "Already Using Dummy",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"source\": \"dummy\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/config/data-source",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"config",
+								"data-source"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Already using dummy data\",\n  \"dataSource\": \"dummy\",\n  \"changed\": false\n}"
+				}
+			]
+		},
+		{
+			"name": "Switch to Real Data",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response indicates success\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"});",
+							"",
+							"pm.test(\"Source was processed\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('currentSource');",
+							"    pm.expect(jsonData.currentSource).to.equal('opportunities');",
+							"});",
+							"",
+							"// Log the switch",
+							"const jsonData = pm.response.json();",
+							"if (jsonData.changed) {",
+							"    console.log(`✅ Switched from ${jsonData.previousSource} to ${jsonData.currentSource}`);",
+							"} else {",
+							"    console.log(`ℹ️ Already using ${jsonData.currentSource}`);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"source\": \"opportunities\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/config/data-source",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"config",
+						"data-source"
+					]
+				},
+				"description": "Switch to using data/opportunities.json (real scraped opportunities). Requires Firebase authentication token."
+			},
+			"response": []
+		},
+		{
+			"name": "Reset to Default (Real Data)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response indicates success\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.success).to.be.true;",
+							"});",
+							"",
+							"pm.test(\"Reset to opportunities\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.currentSource).to.equal('opportunities');",
+							"});",
+							"",
+							"// Log the reset",
+							"const jsonData = pm.response.json();",
+							"console.log(`🔄 Reset from ${jsonData.previousSource} to ${jsonData.currentSource}`);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/config/reset",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"config",
+						"reset"
+					]
+				},
+				"description": "Reset to default data source (opportunities.json). Requires Firebase authentication token."
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{firebase_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Check if token exists",
+					"if (!pm.collectionVariables.get(\"firebase_token\")) {",
+					"    console.warn(\"⚠️ No Firebase token set! Get it from browser console:\");",
+					"    console.warn(\"(async () => { const t = await window.firebaseAuth.currentUser.getIdToken(); await navigator.clipboard.writeText(t); console.log('✅ Copied!'); })();\");",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3001/api",
+			"type": "string"
+		},
+		{
+			"key": "firebase_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
