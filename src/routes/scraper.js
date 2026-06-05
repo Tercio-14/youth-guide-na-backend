@@ -1,21 +1,25 @@
 /**
- * Scraper Routes - Manual scraping trigger endpoints
- * Protected admin-only endpoints to trigger web scraping
+ * Scraper Routes — Manual scraping trigger endpoints.
+ *
+ * Python dependency: This route spawns `python3 scrapers/run_all.py`.
+ * Requirements: Python 3.8+, packages in scrapers/requirements.txt installed.
+ * The Python command can be configured via PYTHON_CMD env var (default: python3).
+ * On Windows, set PYTHON_CMD=python if `python3` is not in PATH.
  */
 
 const express = require('express');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
+const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
 /**
  * POST /api/scrape
- * Trigger manual scraping of all configured sources
- * Protected endpoint - admin only
+ * Trigger manual scraping of all configured sources (admin only).
  */
-router.post('/scrape', async (req, res) => {
+router.post('/scrape', verifyToken, requireAdmin, async (req, res) => {
   console.log('🕷️ [Scraper API] Manual scrape triggered');
   console.log('📅 [Scraper API] Timestamp:', new Date().toISOString());
   
@@ -41,7 +45,8 @@ router.post('/scrape', async (req, res) => {
     
     // Spawn Python process
     console.log('🐍 [Scraper API] Spawning Python process...');
-    const pythonProcess = spawn('python3', [scraperPath], {
+    const pythonCmd = process.env.PYTHON_CMD || 'python3';
+    const pythonProcess = spawn(pythonCmd, [scraperPath], {
       cwd: path.join(__dirname, '..', '..', 'scrapers'),
       env: { ...process.env }
     });

@@ -225,117 +225,56 @@ router.post('/profile', verifyToken, async (req, res) => {
 });
 
 /**
- * GET /api/users/saved
- * Get user's saved opportunities
+ * PATCH /api/users/profile
+ * Partially update user profile — only writes fields present in request body.
  */
-router.get('/saved', verifyToken, async (req, res) => {
+router.patch('/profile', verifyToken, async (req, res) => {
   try {
-    const userDoc = await collections.users.doc(req.user.uid).get();
-    
-    if (!userDoc.exists) {
-      return res.json({
-        success: true,
-        savedOpportunities: []
-      });
+    const allowedFields = [
+      'firstName', 'ageBracket', 'location', 'education',
+      'employmentStatus', 'skills', 'interests', 'phone',
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
     }
 
-    const userData = userDoc.data();
-    const savedOpportunityIds = userData.savedOpportunities || [];
-    
-    // TODO: Fetch full opportunity details for saved IDs
-    const savedOpportunities = [];
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields provided for update' });
+    }
+
+    updates.updatedAt = new Date().toISOString();
+    await collections.users.doc(req.user.uid).set(updates, { merge: true });
+
+    logger.info(`[PATCH /profile] Profile updated for user: ${req.user.uid}`);
 
     res.json({
       success: true,
-      savedOpportunities,
-      count: savedOpportunities.length
+      message: 'Profile updated successfully',
+      profile: { ...updates, uid: req.user.uid, email: req.user.email },
     });
-    
   } catch (error) {
-    logger.error('Get saved opportunities error:', error);
-    res.status(500).json({
-      error: 'Failed to get saved opportunities',
-      message: error.message
-    });
+    logger.error(`[PATCH /profile] Error for user ${req.user.uid}:`, error);
+    res.status(500).json({ error: 'Failed to update profile', message: error.message });
   }
 });
 
-/**
- * POST /api/users/save/:opportunityId
- * Save an opportunity
- */
-router.post('/save/:opportunityId', verifyToken, async (req, res) => {
-  try {
-    const { opportunityId } = req.params;
-    
-    if (!opportunityId) {
-      return res.status(400).json({
-        error: 'Invalid opportunity ID'
-      });
-    }
-
-    // TODO: Verify opportunity exists
-    
-    // Add to user's saved opportunities array
-    const userRef = collections.users.doc(req.user.uid);
-    
-    await userRef.set({
-      savedOpportunities: require('firebase-admin').firestore.FieldValue.arrayUnion(opportunityId)
-    }, { merge: true });
-
-    logger.info(`Opportunity saved: ${opportunityId} by ${req.user.uid}`);
-
-    res.json({
-      success: true,
-      message: 'Opportunity saved successfully',
-      opportunityId
-    });
-    
-  } catch (error) {
-    logger.error('Save opportunity error:', error);
-    res.status(500).json({
-      error: 'Failed to save opportunity',
-      message: error.message
-    });
-  }
+// Deprecated saved endpoints — use /api/saved instead
+router.get('/saved', verifyToken, (req, res) => {
+  res.redirect(301, '/api/saved');
 });
 
-/**
- * DELETE /api/users/save/:opportunityId
- * Unsave an opportunity
- */
-router.delete('/save/:opportunityId', verifyToken, async (req, res) => {
-  try {
-    const { opportunityId } = req.params;
-    
-    if (!opportunityId) {
-      return res.status(400).json({
-        error: 'Invalid opportunity ID'
-      });
-    }
+router.post('/save/:opportunityId', verifyToken, (req, res) => {
+  res.status(410).json({
+    error: 'Deprecated endpoint',
+    message: 'Use POST /api/saved with body { opportunity: { id, ... } }',
+  });
+});
 
-    // Remove from user's saved opportunities array
-    const userRef = collections.users.doc(req.user.uid);
-    
-    await userRef.set({
-      savedOpportunities: require('firebase-admin').firestore.FieldValue.arrayRemove(opportunityId)
-    }, { merge: true });
-
-    logger.info(`Opportunity unsaved: ${opportunityId} by ${req.user.uid}`);
-
-    res.json({
-      success: true,
-      message: 'Opportunity unsaved successfully',
-      opportunityId
-    });
-    
-  } catch (error) {
-    logger.error('Unsave opportunity error:', error);
-    res.status(500).json({
-      error: 'Failed to unsave opportunity',
-      message: error.message
-    });
-  }
+router.delete('/save/:opportunityId', verifyToken, (req, res) => {
+  res.redirect(301, `/api/saved/${req.params.opportunityId}`);
 });
 
 module.exports = router;

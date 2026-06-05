@@ -2,11 +2,8 @@ const express = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { collections, admin } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { retrieveOpportunities, hybridRetrieveOpportunities } = require('../utils/rag'); // Updated to use new RAG system
+const { retrieveOpportunities } = require('../utils/retrieve');
 const { generateChatCompletion } = require('../utils/llm');
-
-// Feature flag: Enable AI-powered hybrid RAG (Two-Stage: TF-IDF + AI reranking)
-const USE_HYBRID_RAG = process.env.USE_HYBRID_RAG !== 'false'; // Enabled by default
 
 const router = express.Router();
 
@@ -241,8 +238,8 @@ function sanitizeOpportunityForResponse(opportunity) {
     id: opportunity.id,
     title: opportunity.title || 'Opportunity',
     description: opportunity.description || null,
-    type: opportunity.type || 'General',
-    organization: opportunity.organization || 'Unknown',
+    type: opportunity.type || opportunity.category || 'General',
+    organization: opportunity.organization || opportunity.source || 'Unknown',
     location: opportunity.location || null,
     date_posted: opportunity.date_posted || null,
     source: opportunity.source || null,
@@ -435,28 +432,12 @@ router.post('/', verifyToken, async (req, res) => {
         ageBracket: mergedProfile?.ageBracket || 'Not specified'
       });
 
-      if (USE_HYBRID_RAG) {
-        // Stage 1: TF-IDF retrieves ~20 candidates
-        // Stage 2: AI reranks to get best 5
-        retrievedOpportunities = await hybridRetrieveOpportunities(retrievalQuery, {
+      const retrievalResult = await retrieveOpportunities(retrievalQuery, {
           topK: MAX_OPPORTUNITIES,
-          minScore: 0.01, // Lower threshold for Stage 1 (AI will filter in Stage 2)
-          userProfile: mergedProfile,
-        });
-        
-        logger.info('[Chat] Using Hybrid RAG (TF-IDF + AI reranking)');
-      } else {
-        // Fallback: Use only TF-IDF (Stage 1)
-        retrievedOpportunities = await retrieveOpportunities(retrievalQuery, {
-          topK: MAX_OPPORTUNITIES,
-          minScore: 0.05,
-          userProfile: mergedProfile,
-        });
-        
-        logger.info('[Chat] Using basic TF-IDF RAG (Hybrid disabled)');
-      }
-      
-      retrievalLatencyMs = Date.now() - retrievalStartTime;
+      });
+      retrievedOpportunities = retrievalResult.results;
+      retrievalLatencyMs = retrievalResult.retrievalLatencyMs ?? (Date.now() - retrievalStartTime);
+      logger.info('[Chat] Using Firestore embedding-based retrieval');
 
       // Use LLM to intelligently filter opportunities by user's specific intent
       // This replaces hardcoded keyword matching with context-aware AI filtering
@@ -467,26 +448,12 @@ router.post('/', verifyToken, async (req, res) => {
         mergedProfile
       );
 
-      // Check if opportunities are poor matches (all AI scores below 65)
-      const hasPoorMatches = retrievedOpportunities.length > 0 && 
-        retrievedOpportunities.every(opp => (opp.aiScore || 0) < 65);
-      
-      if (hasPoorMatches) {
-        logger.warn('[Chat] All opportunities are poor matches for user profile', {
-          count: retrievedOpportunities.length,
-          avgAiScore: (retrievedOpportunities.reduce((sum, o) => sum + (o.aiScore || 0), 0) / retrievedOpportunities.length).toFixed(1),
-          userSkills: mergedProfile.skills,
-          userInterests: mergedProfile.interests
-        });
-        // Clear opportunities so system responds honestly about no good matches
-        retrievedOpportunities = [];
-      }
 
       promptOpportunities = formatOpportunitiesForPrompt(retrievedOpportunities);
       
       logger.info('[Chat] Retrieved opportunities', {
         count: retrievedOpportunities.length,
-        useHybridRAG: USE_HYBRID_RAG,
+        retrieval: 'firestore-embedding',
         latencyMs: retrievalLatencyMs
       });
     } else {

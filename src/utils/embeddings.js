@@ -1,28 +1,14 @@
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('./logger');
 
-const DEFAULT_MODEL = process.env.EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2';
+const DEFAULT_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-004';
 
-let embeddingPipelinePromise = null;
-
-async function createEmbeddingPipeline(model) {
-  logger.info(`[Embeddings] Loading embedding model: ${model}`);
-
-  const transformersModule = await import('@xenova/transformers');
-  const pipelineFactory = transformersModule.pipeline || transformersModule.default?.pipeline;
-
-  if (typeof pipelineFactory !== 'function') {
-    throw new Error('Failed to load pipeline factory from @xenova/transformers');
+function getClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured');
   }
-
-  return pipelineFactory('feature-extraction', model);
-}
-
-async function getEmbeddingPipeline() {
-  if (!embeddingPipelinePromise) {
-    const model = DEFAULT_MODEL;
-    embeddingPipelinePromise = createEmbeddingPipeline(model);
-  }
-  return embeddingPipelinePromise;
+  return new GoogleGenerativeAI(apiKey);
 }
 
 function normalizeVector(vector) {
@@ -47,32 +33,37 @@ function cosineSimilarity(a, b) {
   return dot;
 }
 
+/**
+ * Embed a single string using Gemini text-embedding-004.
+ * Returns a float array (768-dimensional by default).
+ */
 async function embedText(text) {
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
     return [];
   }
 
   try {
-    const embedder = await getEmbeddingPipeline();
-    const output = await embedder(text, { pooling: 'mean', normalize: true });
-    const vector = Array.from(output?.data || output);
-    return vector;
+    const client = getClient();
+    const model = client.getGenerativeModel({ model: DEFAULT_MODEL });
+    const result = await model.embedContent(text);
+    return Array.from(result.embedding.values);
   } catch (error) {
     logger.error('[Embeddings] Failed to compute embedding', { error: error.message });
     throw error;
   }
 }
 
+/**
+ * Embed multiple strings sequentially.
+ */
 async function embedTexts(texts) {
   if (!Array.isArray(texts) || texts.length === 0) {
     return [];
   }
-
   const results = [];
   for (const text of texts) {
     // eslint-disable-next-line no-await-in-loop
-    const vector = await embedText(text);
-    results.push(vector);
+    results.push(await embedText(text));
   }
   return results;
 }
@@ -80,7 +71,6 @@ async function embedTexts(texts) {
 module.exports = {
   embedText,
   embedTexts,
-  getEmbeddingPipeline,
   normalizeVector,
   cosineSimilarity,
   DEFAULT_MODEL,

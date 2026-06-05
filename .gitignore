@@ -132,4 +132,4 @@ firebase-service-account.json
 models/
 *.onnx
 *.bin
-*.pt
+*.ptyouth-guide-na-service-account.json
