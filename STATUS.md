@@ -1,94 +1,48 @@
-# 🎯 YouthGuide NA Integration Status
+# YouthGuide NA Backend — Status
 
-**Date**: October 16, 2025  
-**Status**: ✅ **Authentication Integration Complete**
+**Updated**: June 2026  
+**Status**: Production-ready
 
-## ✅ **Completed Setup**
+---
 
-### Backend Foundation
-- ✅ Express.js server with Firebase Admin SDK
-- ✅ All API routes scaffolded (auth, chat, users, opportunities, admin)
-- ✅ Firebase service account configured
-- ✅ Environment variables properly set
-- ✅ Backend running on http://localhost:3001
+## Completed
 
-### Frontend Integration  
-- ✅ Firebase SDK installed and configured
-- ✅ AuthContext for authentication state management
-- ✅ API client for backend communication
-- ✅ Protected routes implemented
-- ✅ Environment variables configured for Vite
-- ✅ Frontend running on http://localhost:8080
+### Core Infrastructure
+- Express.js server with structured route organization
+- Firebase Admin SDK initialized via service account JSON file (`FIREBASE_SERVICE_ACCOUNT_PATH`)
+- Firestore collections: users, opportunities, chats, saved, feedback
+- CORS configured; auth middleware on all protected routes
 
-### Firebase Project
-- ✅ Project ID: `youthguide-na`
-- ✅ Service account key generated and secured
-- ✅ Frontend and backend configurations match
+### AI / RAG Pipeline
+- Google Gemini `gemini-2.5-flash` for chat generation (replaces OpenRouter)
+- Google Gemini `text-embedding-004` for vector embeddings (replaces @xenova/transformers, 768-dim)
+- Firestore cosine similarity retrieval (`src/utils/retrieve.js`)
+- Batch ingest script (`node scripts/ingest.js --force`) to embed all opportunities
 
-## 🎯 **Ready to Test**
+### Authentication & Authorization
+- Firebase ID token verification on all protected routes
+- Admin check: custom claim `admin: true` → `ADMIN_EMAILS` env var → Firestore `isAdmin` field
+- Service account JSON committed to `.gitignore`; loaded via env var path only
 
-You can now test the complete authentication flow:
+### API Routes (all implemented)
+- `POST /api/auth/register` — create user profile
+- `GET/PATCH /api/users/profile` — read and partial-update profile
+- `POST /api/chat` — Gemini chat with RAG opportunity retrieval
+- `GET/POST/PUT/DELETE /api/opportunities` — full CRUD
+- `GET/POST/DELETE /api/saved` + `POST /api/saved/batch-check` — bookmark management
+- `GET/PUT/DELETE /api/admin/users` + `GET /api/admin/stats` — admin management
+- `POST /api/scraper/scrape` — Python scraper trigger (admin only)
+- `POST /api/feedback` — thumbs-up/down feedback
+- Offline mode mock endpoints under `/api/offline/*`
 
-1. **Visit**: http://localhost:8080/auth
-2. **Register**: Create a new account with email/password
-3. **Profile**: Complete profile setup (will save to Firestore)
-4. **Chat**: Access chat page (will show placeholder responses)
-5. **Protected Routes**: Try accessing /chat without login (should redirect)
+### Branch State
+- `main`: current production-ready state
+- `dev`: mirrors main; feature branches deleted
 
-## 📋 **Next Steps (Sprint 1)**
+---
 
-Now that authentication is working, implement the RAG pipeline:
+## Pending
 
-### Week 1 Priorities:
-1. **Enable Firestore Database** in Firebase Console
-2. **Add RAG Pipeline**: 
-   - Install `@xenova/transformers` in backend
-   - Implement embedding computation
-   - Add vector similarity search
-3. **LLM Integration**:
-   - Get OpenRouter API key
-   - Connect to free LLM model
-   - Test chat responses
-
-### Commands to Continue:
-```bash
-# Backend: Add RAG dependencies
-cd youth-guide-na-backend
-npm install @xenova/transformers node-fetch
-
-# Frontend: Test authentication
-# Visit http://localhost:8080/auth
-```
-
-## 🔧 **Current Configuration**
-
-### Ports:
-- **Frontend**: http://localhost:8080 (Vite dev server)  
-- **Backend**: http://localhost:3001 (Express API server)
-
-### Key Files Created:
-- `youth-guide-na/src/config/firebase.js` - Firebase frontend config
-- `youth-guide-na/src/contexts/AuthContext.jsx` - Auth state management
-- `youth-guide-na/src/utils/api.js` - Backend API client
-- `youth-guide-na-backend/.env` - Backend credentials (secured)
-
-## ✅ **Integration Test Checklist**
-
-- [ ] Visit frontend at localhost:8080
-- [ ] Register new user account
-- [ ] Complete profile setup  
-- [ ] Check if data appears in Firestore console
-- [ ] Try accessing protected routes
-- [ ] Test logout functionality
-- [ ] Send test chat message (will get placeholder response)
-
-## 🚀 **Success!** 
-
-Your YouthGuide NA application now has:
-- ✅ Working authentication system
-- ✅ Real user registration and login
-- ✅ Profile data persistence
-- ✅ Protected route navigation  
-- ✅ Backend API ready for RAG implementation
-
-**Ready to proceed with Sprint 1 RAG pipeline development!**
+- Run `node scripts/ingest.js --force` on production Firestore to re-embed all opportunities with Gemini vectors (required: switching from 384-dim Xenova to 768-dim Gemini makes existing vectors incompatible)
+- Set up Firestore composite indexes if compound queries return index errors
+- Production deployment: set `NODE_ENV=production`, `DISABLE_AUTH_FOR_TESTING=false`, provide service account path on server

@@ -1,306 +1,178 @@
-# YouthGuide NA Backend
+# YouthGuide NA — Backend
 
-RAG-powered backend API for YouthGuide NA - connecting youth to opportunities in Namibia.
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+ 
-- Firebase project with Firestore and Authentication enabled
-- OpenRouter or Hugging Face API key
-
-### Local Development
-
-1. **Clone and install dependencies:**
-   ```bash
-   git clone https://github.com/Tercio-14/youth-guide-na-backend.git
-   cd youth-guide-na-backend
-   npm install
-   ```
-
-2. **Set up environment variables:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Firebase and LLM API credentials
-   ```
-
-3. **Start development server:**
-   ```bash
-   npm run dev
-   ```
-
-4. **Test the API:**
-   ```bash
-   curl http://localhost:3001/health
-   curl http://localhost:3001/api
-   ```
-
-## 📋 Implementation Status
-
-### ✅ Completed (Foundation)
-- Express.js server with middleware stack
-- Firebase Admin SDK integration  
-- Authentication middleware with JWT verification
-- Basic route structure for all endpoints
-- Error handling and logging
-- Deployment configurations for Vercel and Render
-
-### 🚧 In Progress (Sprint 1)
-- RAG pipeline with sentence-transformers
-- LLM integration (OpenRouter/Hugging Face)
-- Embedding computation and vector search
-- Data ingestion scripts
-
-### ⏳ Planned (Sprint 2-3)
-- Complete CRUD operations for opportunities
-- User profile management
-- Chat history persistence
-- Admin operations and analytics
-
-## 🏗️ Architecture
-
-```
-├── src/
-│   ├── config/         # Firebase and environment setup
-│   ├── middleware/     # Auth, CORS, error handling
-│   ├── routes/         # API endpoints
-│   ├── services/       # Business logic (RAG, LLM, etc.)
-│   └── utils/          # Helpers and utilities
-├── scripts/            # Setup and maintenance scripts
-└── tests/              # Test suites
-```
-
-## 📡 API Endpoints
-
-### Authentication
-- `POST /api/auth/verify` - Verify Firebase token
-- `GET /api/auth/user` - Get current user info
-
-### Chat & RAG  
-- `POST /api/chat` - Main RAG chat endpoint
-- `GET /api/chat/history/:userId` - Get user's chat history
-
-### Opportunities
-- `GET /api/opportunities` - List/filter opportunities
-- `POST /api/opportunities` - Create opportunity (admin)
-- `PUT /api/opportunities/:id` - Update opportunity (admin)
-- `DELETE /api/opportunities/:id` - Delete opportunity (admin)
-
-### Users
-- `GET /api/users/profile` - Get user profile
-- `POST /api/users/profile` - Create/update profile
-- `GET /api/users/saved` - Get saved opportunities
-- `POST /api/users/save/:id` - Save opportunity
-- `DELETE /api/users/save/:id` - Unsave opportunity
-
-### Admin
-- `GET /api/admin/stats` - System statistics
-- `POST /api/admin/recompute` - Recompute embeddings
-- `GET /api/admin/users` - List users
-
-## 🔐 Environment Variables
-
-Copy `.env.example` to `.env` and configure:
-
-```env
-# Server Configuration
-NODE_ENV=development
-PORT=3001
-FRONTEND_URL=http://localhost:5173
-
-# Firebase Configuration
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxx@your-project.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-FIREBASE_DATABASE_URL=https://your-project-id-default-rtdb.firebaseio.com/
-
-# LLM API Configuration (choose one)
-OPENROUTER_API_KEY=sk-or-v1-xxxxx
-OPENROUTER_CHAT_MODEL=mistralai/mistral-small-latest
-OPENROUTER_SITE_URL=https://your-frontend-url.local
-OPENROUTER_APP_NAME=YouthGuide NA Backend
-CHAT_TEMPERATURE=0.2
-CHAT_MAX_TOKENS=600
-# OR
-HUGGINGFACE_API_KEY=hf_xxxxx
-HUGGINGFACE_MODEL=microsoft/DialoGPT-medium
-
-# Retrieval & Logging Settings
-MAX_OPPORTUNITIES_PER_QUERY=5
-EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
-RETRIEVAL_TOP_K=3
-RETRIEVAL_CANDIDATES=100
-LOG_LEVEL=info
-
-# Chat Context Settings
-USE_CHAT_CONTEXT=true
-CHAT_CONTEXT_TURNS=3
-
-# Rate Limiting
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW_MS=900000
-
-# Deployment
-RENDER_EXTERNAL_URL=https://youthguide-backend.onrender.com
-VERCEL_URL=https://youthguide-backend.vercel.app
-```
-
-## 🚢 Deployment
-
-### Vercel (Recommended)
-```bash
-npm install -g vercel
-vercel --prod
-```
-
-### Render
-1. Connect GitHub repository to Render
-2. Set environment variables in dashboard
-3. Deploy automatically on push
-
-## 🧪 Testing
-
-### Unit Tests
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run specific test file
-npm test -- auth.test.js
-
-# Test chat context memory feature
-# See tests/chat-context.test.md for comprehensive test plan
-```
-
-### Comprehensive Chatbot Testing
-
-A dedicated test suite validates chatbot responses across different user personas and scenarios:
-
-```bash
-# Run comprehensive chatbot tests (recommended)
-cd test
-node run-all-tests.js
-```
-
-This runs:
-1. **Dummy Data Pass** - Tests with controlled test data (20 custom opportunities)
-2. **Real Data Pass** - Tests with production opportunity database
-3. **Generates Reports** - Detailed markdown reports in `test-results/` directory
-
-**What it tests:**
-- 8 user personas (skilled workers, graduates, students, etc.)
-- 6 query categories (searches, conversations, off-topic)
-- ~384 total test cases
-- Response appropriateness, relevance, and quality
-- Real-world performance and data coverage
-
-**Reports include:**
-- Pass/fail statistics by persona and query type
-- Individual test results with scoring
-- Performance metrics (response time, opportunity counts)
-- Data gap analysis
-- Actionable recommendations
-
-See `test/README.md` for detailed documentation.
-
-**When to run:**
-- After modifying RAG pipeline or prompts
-- After updating opportunity database
-- Before production deployments
-- Weekly as regression tests
-
-## 💬 Conversational Memory Feature
-
-The chatbot now supports **short-term conversational memory** to maintain context within a single chat session.
-
-### How It Works
-
-1. **Conversation ID**: Each chat session is identified by a unique `conversationId` that persists across messages until the page is refreshed.
-
-2. **Message History**: The backend retrieves the last few message pairs from Firestore before generating each response, allowing the chatbot to:
-   - Remember user's name and preferences
-   - Maintain topic continuity
-   - Handle follow-up questions naturally
-   - Reference previous opportunities mentioned
-
-3. **Configuration**:
-   - `USE_CHAT_CONTEXT=true` - Enable/disable context feature
-   - `CHAT_CONTEXT_TURNS=3` - Number of message pairs to include (default: 3 turns = 6 messages)
-
-4. **Performance**: Context retrieval adds minimal latency (<100ms) via a single Firestore query.
-
-### Example Conversation
-
-```
-User: Hi, my name is Sarah
-Bot: Hi Sarah! I'm YouthGuide NA. How can I help you today?
-
-User: What IT jobs are available?
-Bot: Hi Sarah! I found 2 opportunities that might interest you...
-
-User: Tell me more about the first one
-Bot: The software development internship at TechCorp offers...
-```
-
-### Data Structure
-
-Messages are stored in Firestore:
-```
-chats/
-  {conversationId}/
-    userId: "user123"
-    createdAt: timestamp
-    updatedAt: timestamp
-    lastUserMessage: "..."
-    lastAssistantMessage: "..."
-    messages/
-      {messageId}: {
-        role: "user" | "assistant"
-        content: "message text"
-        timestamp: timestamp
-        profileSnapshot: {...}  // user messages only
-        opportunities: [...]     // assistant messages only
-      }
-```
-
-### Logging
-
-Context usage is logged for monitoring:
-```
-[ChatContext] Using previous chat context: true (count: 6)
-[Chat] conversationId=conv_123, historyUsed=true, historyMessageCount=6
-```
-
-### Testing
-
-See `tests/chat-context.test.md` for a comprehensive test plan covering:
-- Basic context functionality
-- Context toggle behavior
-- Conversation isolation
-- Performance validation
-- Edge cases and error scenarios
-
-## 📚 Next Steps
-
-Follow the implementation plan in `IMPLEMENTATION_PLAN.md`:
-
-1. **Sprint 1 (Week 1)**: RAG pipeline and embedding computation
-2. **Sprint 2 (Week 2)**: Complete API endpoints and deployment  
-3. **Sprint 3 (Week 3)**: Frontend integration and testing
-
-## 🤝 Contributing
-
-This is a research prototype for academic evaluation. See the main repository for contribution guidelines.
-
-## 📄 License
-
-MIT License - See LICENSE file for details.
+Node.js/Express API server for the YouthGuide NA platform. Provides AI-powered opportunity search via Google Gemini, Firebase-backed authentication, and a full REST API for managing youth opportunities, user profiles, and saved items.
 
 ---
 
-**Repository**: https://github.com/Tercio-14/youth-guide-na-backend  
-**Main Project**: https://github.com/Tercio-14/youth-guide-na  
-**Documentation**: See `IMPLEMENTATION_PLAN.md` for detailed technical specifications
+## Tech Stack
+
+- **Runtime**: Node.js 20+
+- **Framework**: Express 4
+- **Database**: Firebase Firestore (via Firebase Admin SDK)
+- **Authentication**: Firebase Auth (ID token verification)
+- **AI**: Google Gemini (`gemini-2.5-flash` for chat, `text-embedding-004` for vector embeddings)
+- **Vector retrieval**: Firestore cosine similarity search (`src/utils/retrieve.js`)
+- **Python scraper**: Optional web scraper invoked as a subprocess
+
+---
+
+## Prerequisites
+
+- Node.js 20 or higher
+- A Firebase project with Firestore and Authentication enabled
+- A Google Gemini API key from [Google AI Studio](https://aistudio.google.com)
+- A Firebase service account JSON file (downloaded from Firebase Console)
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/your-org/youth-guide-na-backend.git
+cd youth-guide-na-backend
+npm install
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in all values. The server will not start without required variables.
+
+| Variable | Required | Description |
+|---|---|---|
+| `FIREBASE_SERVICE_ACCOUNT_PATH` | Yes | Path to Firebase service account JSON file |
+| `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `GEMINI_MODEL` | No | Gemini model name (default: `gemini-2.5-flash`) |
+| `EMBEDDING_MODEL` | No | Embedding model name (default: `text-embedding-004`) |
+| `PORT` | No | Server port (default: `3001`) |
+| `FRONTEND_URL` | No | Allowed CORS origin (default: `http://localhost:5173`) |
+| `ADMIN_EMAILS` | No | Comma-separated admin email fallback list |
+| `PYTHON_CMD` | No | Python executable name (default: `python3`) |
+| `DISABLE_AUTH_FOR_TESTING` | No | Set `true` only in local dev to skip token verification |
+
+See `.env.example` for the complete list with descriptions.
+
+---
+
+## Firebase Setup
+
+1. In Firebase Console, go to **Project Settings > Service Accounts**.
+2. Click **Generate new private key** and download the JSON file.
+3. Place the file somewhere outside your repository (e.g., `~/secrets/youth-guide-na-service-account.json`).
+4. Set `FIREBASE_SERVICE_ACCOUNT_PATH` in `.env` to the absolute or relative path of that file.
+
+The service account JSON file must never be committed to source control. It is listed in `.gitignore`.
+
+To grant admin access to a user, call `PUT /api/admin/users/:uid` with `{ isAdmin: true }`. This sets the `admin: true` custom claim on the Firebase Auth token. The user must sign out and sign back in for the new claim to take effect.
+
+---
+
+## Running the Server
+
+```bash
+# Development (auto-reload)
+npm run dev
+
+# Production
+npm start
+```
+
+The server starts on `http://localhost:3001` by default.
+
+---
+
+## API Route Groups
+
+| Prefix | Description |
+|---|---|
+| `POST /api/auth/register` | Create user profile in Firestore after Firebase sign-up |
+| `GET /api/users/profile` | Get authenticated user's profile |
+| `PATCH /api/users/profile` | Partial update of profile fields |
+| `POST /api/chat` | Send a message; returns Gemini response with matched opportunities |
+| `GET /api/opportunities` | List opportunities (supports `?category=` filter) |
+| `POST /api/opportunities` | Create opportunity (admin only) |
+| `PUT /api/opportunities/:id` | Update opportunity (admin only) |
+| `DELETE /api/opportunities/:id` | Delete opportunity (admin only) |
+| `GET /api/saved` | List user's saved opportunities |
+| `POST /api/saved/:id` | Save an opportunity |
+| `DELETE /api/saved/:id` | Unsave an opportunity |
+| `POST /api/saved/batch-check` | Check saved status for multiple IDs |
+| `GET /api/admin/stats` | Platform statistics (admin only) |
+| `GET /api/admin/users` | Paginated user list (admin only) |
+| `PUT /api/admin/users/:uid` | Update user / set admin claim (admin only) |
+| `DELETE /api/admin/users/:uid` | Delete user from Auth and Firestore (admin only) |
+| `POST /api/scraper/scrape` | Trigger Python web scraper (admin only) |
+| `GET /api/feedback/opportunity/:id` | Get feedback for an opportunity |
+| `POST /api/feedback` | Submit thumbs-up/down feedback |
+
+All routes except public auth endpoints require a Firebase ID token in the `Authorization: Bearer <token>` header.
+
+---
+
+## Running the Ingest Script
+
+The ingest script fetches all opportunities from Firestore and computes Gemini embeddings so they can be retrieved by the RAG pipeline.
+
+```bash
+# Embed only documents that are missing embeddings
+node scripts/ingest.js
+
+# Re-embed all documents (required after switching embedding models)
+node scripts/ingest.js --force
+```
+
+Run `--force` after any change to the embedding model or after initial setup. Embeddings are stored directly on each Firestore opportunity document.
+
+---
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm start` | Start server in production mode |
+| `npm run dev` | Start server with nodemon auto-reload |
+| `node scripts/ingest.js` | Embed missing opportunities |
+| `node scripts/ingest.js --force` | Re-embed all opportunities |
+
+---
+
+## Project Structure
+
+```
+src/
+  config/
+    firebase.js       Firebase Admin SDK initialization
+  middleware/
+    auth.js           Token verification and admin check
+  routes/
+    auth.js           User registration
+    users.js          Profile read/write
+    chat.js           Gemini chat + RAG retrieval
+    opportunities.js  Opportunity CRUD
+    saved.js          Bookmark management
+    admin.js          Admin stats, user management
+    feedback.js       Opportunity feedback
+    scraper.js        Python scraper trigger
+    offline.js        Offline mode mock responses
+    config.js         Runtime config endpoint
+  utils/
+    llm.js            Gemini chat client
+    embeddings.js     Gemini embedding client
+    retrieve.js       Firestore vector retrieval
+    firestore.js      Shared collection references
+scripts/
+  ingest.js           Batch embedding script
+```
+
+---
+
+## Deployment Notes
+
+- Set `NODE_ENV=production` and `DISABLE_AUTH_FOR_TESTING=false`.
+- The service account JSON file must be present at the path specified by `FIREBASE_SERVICE_ACCOUNT_PATH` on the server.
+- Run `node scripts/ingest.js --force` after initial deployment to embed all opportunities.
+- Firestore indexes are required for compound queries. Create them in Firebase Console if Firestore returns an index error.
+- CORS is configured via `FRONTEND_URL`. Set this to your production frontend domain.
