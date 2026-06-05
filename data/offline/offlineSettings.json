@@ -1,0 +1,6 @@
+{
+  "autoDetection": false,
+  "manualOverride": true,
+  "lastUpdated": "2025-10-28T20:46:04.396Z",
+  "notes": "autoDetection: Enable/disable automatic offline mode detection. manualOverride: Force offline mode manually (only works when autoDetection is false)"
+}

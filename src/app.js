@@ -18,6 +18,7 @@ const scraperRoutes = require('./routes/scraper');
 const savedRoutes = require('./routes/saved');
 const feedbackRoutes = require('./routes/feedback');
 const { router: configRoutes, getCurrentDataSource } = require('./routes/config');
+const offlineRoutes = require('./routes/offline'); // OFFLINE MODE: Local simulation endpoints
 
 // Connect data source configuration to RAG system
 setDataSourceConfigGetter(getCurrentDataSource);
@@ -213,6 +214,7 @@ app.use('/api/scrape', scraperRoutes);
 app.use('/api/saved', savedRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/offline', offlineRoutes); // OFFLINE MODE: Local simulation routes
 
 // 404 handler
 app.use('*', (req, res) => {

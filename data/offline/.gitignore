@@ -1,0 +1,12 @@
+# Offline Mode - Local Storage
+
+# Ignore all offline data files (user-generated)
+offlineUser.json
+offlineSavedOpportunities.json
+offlineChats.json
+offlineConversations.json
+syncQueue.json
+
+# Keep templates
+!templates/
+!templates/*.json
