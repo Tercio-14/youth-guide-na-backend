@@ -112,9 +112,24 @@ All routes except public auth endpoints require a Firebase ID token in the `Auth
 
 ---
 
-## Running the Ingest Script
+## Seeding and Embedding Opportunities
 
-The ingest script fetches all opportunities from Firestore and computes Gemini embeddings so they can be retrieved by the RAG pipeline.
+On a fresh Firestore database, populate the `opportunities` collection from the
+bundled dataset (`data/opportunities.json`), then compute embeddings:
+
+```bash
+# 1. Seed opportunities into Firestore (no API calls, fast)
+node scripts/seed.js
+
+# 2. Embed all seeded opportunities with Gemini
+node scripts/ingest.js --force
+```
+
+Use `node scripts/seed.js --wipe` to delete all existing opportunities before
+re-seeding.
+
+The ingest script fetches all opportunities from Firestore and computes Gemini
+embeddings so they can be retrieved by the RAG pipeline.
 
 ```bash
 # Embed only documents that are missing embeddings
@@ -124,7 +139,11 @@ node scripts/ingest.js
 node scripts/ingest.js --force
 ```
 
-Run `--force` after any change to the embedding model or after initial setup. Embeddings are stored directly on each Firestore opportunity document.
+Run `--force` after any change to the embedding model or after initial setup.
+Embeddings are stored directly on each Firestore opportunity document.
+
+The Gemini API key must not have an IP address restriction that blocks the
+machine running the ingest, or embedding calls will fail with a 403.
 
 ---
 
@@ -134,6 +153,8 @@ Run `--force` after any change to the embedding model or after initial setup. Em
 |---|---|
 | `npm start` | Start server in production mode |
 | `npm run dev` | Start server with nodemon auto-reload |
+| `node scripts/seed.js` | Seed opportunities from data/opportunities.json |
+| `node scripts/seed.js --wipe` | Wipe then re-seed opportunities |
 | `node scripts/ingest.js` | Embed missing opportunities |
 | `node scripts/ingest.js --force` | Re-embed all opportunities |
 
@@ -164,6 +185,7 @@ src/
     retrieve.js       Firestore vector retrieval
     firestore.js      Shared collection references
 scripts/
+  seed.js             Seed opportunities from data/opportunities.json
   ingest.js           Batch embedding script
 ```
 

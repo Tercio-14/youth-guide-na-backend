@@ -127,6 +127,7 @@ Thumbs.db
 firebase-debug.log
 .firebase/
 firebase-service-account.json
+youth-guide-na-service-account.json
 
 # ML Models (will be downloaded at runtime)
 models/
